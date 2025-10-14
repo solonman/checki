@@ -5,6 +5,7 @@ import { useTranslation } from '../context/i18nContext';
 import { requestWithRetry } from '../utils/apiClient';
 import { FileProcessingQueue } from '../utils/fileProcessingQueue';
 import { validateFile, getFileExtension, formatFileSize } from '../utils/fileUtils';
+import DocumentPreview from './DocumentPreview';
 
 const { Dragger } = Upload;
 const { Option } = Select;
@@ -200,21 +201,72 @@ const BatchProcessing = ({ projectId, visible, onClose }) => {
     );
   };
 
-  // 提取文件内容
+  // 提取文件内容 - 修改为直接在前端处理docx文件
   const extractFileContent = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await requestWithRetry({
-      method: 'POST',
-      url: '/api/files/extract-content',
-      data: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    try {
+      console.log('BatchProcessing - 开始提取文件内容:', file.name);
+      
+      // 优先检查是否为docx文件
+      const isDocxFile = file.name.toLowerCase().endsWith('.docx');
+      console.log('BatchProcessing - 是否为docx文件:', isDocxFile);
+      
+      if (isDocxFile) {
+        // 直接使用前端docx解析函数
+        console.log('BatchProcessing - 直接在前端解析docx文件');
+        // 动态导入解析函数
+        const { extractTextFromDocx } = await import('../utils/documentParser');
+        const textContent = await extractTextFromDocx(file);
+        console.log('BatchProcessing - docx文件解析成功');
+        return textContent;
       }
-    });
+      
+      // 对于其他类型文件，先尝试直接解析
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      if (['txt', 'log', 'csv'].includes(fileExtension)) {
+        console.log('BatchProcessing - 处理文本文件');
+        const { extractTextFromFile } = await import('../utils/documentParser');
+        const textContent = await extractTextFromFile(file);
+        return textContent;
+      }
+      
+      // 图片文件
+      if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+        console.log('BatchProcessing - 处理图片文件');
+        const { extractTextFromImage } = await import('../utils/documentParser');
+        const textContent = await extractTextFromImage(file);
+        return textContent || '无法从图片中提取文本内容';
+      }
+      
+      // 对于其他文件类型，使用原有的API调用方式
+      console.log('BatchProcessing - 尝试通过API提取文件内容');
+      const formData = new FormData();
+      formData.append('file', file);
 
-    return response.data.content;
+      const response = await requestWithRetry({
+        method: 'POST',
+        url: '/api/files/extract-content',
+        data: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      return response.data.content;
+    } catch (error) {
+      console.error('BatchProcessing - 提取文件内容失败:', error);
+      // 提供更友好的错误信息
+      if (error.response) {
+        throw new Error(`提取文件内容失败: ${error.response.data.message || '服务器错误'}`);
+      } else if (error.request) {
+        throw new Error('无法连接到服务器，请检查网络连接');
+      } else {
+        // 如果是docx解析错误，返回更具体的信息
+        if (file.name.toLowerCase().endsWith('.docx')) {
+          throw new Error('DOCX文件解析失败: ' + error.message);
+        }
+        throw new Error('提取文件内容失败: ' + error.message);
+      }
+    }
   };
 
   // 执行校对
@@ -248,19 +300,43 @@ const BatchProcessing = ({ projectId, visible, onClose }) => {
     return response.data;
   };
 
+  // 预览状态
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewFileData, setPreviewFileData] = useState(null);
+
   // 查看结果
   const viewResult = (file) => {
     if (file.result) {
-      Modal.info({
-        title: `${file.name} - ${t('batchProcessing.processingResult')}`,
-        width: 800,
-        content: (
-          <div style={{ maxHeight: 400, overflow: 'auto' }}>
-            <pre>{JSON.stringify(file.result, null, 2)}</pre>
-          </div>
-        )
+      setPreviewFileData({
+        data: JSON.stringify(file.result, null, 2),
+        fileName: `${file.name}_result.json`,
+        fileType: 'application/json'
       });
+      setPreviewVisible(true);
     }
+  };
+
+  // 预览文件内容
+  const previewFile = (file) => {
+    console.log('BatchProcessing - 预览文件:', file.name);
+    console.log('BatchProcessing - 文件对象属性:', Object.keys(file));
+    console.log('BatchProcessing - 原始文件对象:', file.originFileObj);
+    console.log('BatchProcessing - 文件类型:', file.type);
+    
+    // 确保传递原始文件对象，而不是处理后的内容
+    // 特别重要：对于docx文件，必须传递原始的File对象才能正确解析
+    const fileData = file.originFileObj || file.file || file;
+    const mimeType = file.type || (file.name && file.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : '');
+    
+    console.log('BatchProcessing - 传递给预览组件的fileData类型:', typeof fileData);
+    console.log('BatchProcessing - 是否为File/Blob对象:', fileData instanceof File || fileData instanceof Blob);
+    
+    setPreviewFileData({
+      data: fileData,
+      fileName: file.name,
+      fileType: mimeType
+    });
+    setPreviewVisible(true);
   };
 
   // 下载结果
@@ -408,6 +484,12 @@ const BatchProcessing = ({ projectId, visible, onClose }) => {
           <Button
             type="link"
             icon={<EyeOutlined />}
+            onClick={() => previewFile(record)}
+          >
+            {t('batchProcessing.preview')}
+          </Button>
+          <Button
+            type="link"
             onClick={() => viewResult(record)}
             disabled={!record.result}
           >
@@ -444,150 +526,159 @@ const BatchProcessing = ({ projectId, visible, onClose }) => {
     accept: '.docx,.pdf,.txt,.jpg,.png'
   };
 
-  return (
-    <Modal
-      title={t('batchProcessing.title')}
-      open={visible}
-      onCancel={onClose}
-      footer={null}
-      width={1000}
-      className="batch-processing-modal"
-    >
-      <div className="batch-processing-container">
-        {/* 批量处理配置 */}
-        <Card title={t('batchProcessing.configuration')} size="small" style={{ marginBottom: 16 }}>
-          <Form layout="inline">
-            <Form.Item label={t('batchProcessing.outputFormat')}>
-              <Select
-                value={batchConfig.outputFormat}
-                onChange={(value) => setBatchConfig(prev => ({ ...prev, outputFormat: value }))}
-                style={{ width: 120 }}
-              >
-                <Option value="detailed">{t('batchProcessing.format.detailed')}</Option>
-                <Option value="summary">{t('batchProcessing.format.summary')}</Option>
-                <Option value="statistical">{t('batchProcessing.format.statistical')}</Option>
-              </Select>
-            </Form.Item>
-            
-            <Form.Item label={t('batchProcessing.exportFormat')}>
-              <Select
-                value={batchConfig.exportFormat}
-                onChange={(value) => setBatchConfig(prev => ({ ...prev, exportFormat: value }))}
-                style={{ width: 100 }}
-              >
-                <Option value="pdf">PDF</Option>
-                <Option value="word">Word</Option>
-                <Option value="excel">Excel</Option>
-              </Select>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                onClick={startBatchProcessing}
-                loading={processingStatus === 'processing'}
-                disabled={fileList.length === 0 || processingStatus === 'processing'}
-              >
-                {t('batchProcessing.startProcessing')}
-              </Button>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                icon={<PauseCircleOutlined />}
-                onClick={pauseBatchProcessing}
-                disabled={processingStatus !== 'processing'}
-              >
-                {t('batchProcessing.pause')}
-              </Button>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                onClick={resumeBatchProcessing}
-                disabled={processingStatus !== 'paused'}
-              >
-                {t('batchProcessing.resume')}
-              </Button>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                onClick={stopBatchProcessing}
-                disabled={processingStatus === 'idle'}
-              >
-                {t('batchProcessing.stop')}
-              </Button>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                type="default"
-                icon={<DownloadOutlined />}
-                onClick={batchDownload}
-                disabled={!fileList.some(file => file.status === 'completed')}
-              >
-                {t('batchProcessing.batchDownload')}
-              </Button>
-            </Form.Item>
-            
-            <Form.Item>
-              <Button
-                type="primary"
-                icon={<FileTextOutlined />}
-                onClick={handleGenerateReport}
-                disabled={!fileList.some(file => file.status === 'completed')}
-                loading={reportGenerating}
-              >
-                {t('batch.generateReport')}
-              </Button>
-            </Form.Item>
-          </Form>
-          
-          {/* 总体进度 */}
-          {processingStatus !== 'idle' && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ marginBottom: 8 }}>
-                <strong>{t('batchProcessing.overallProgress')}:</strong>
-                {currentProcessingIndex + 1} / {fileList.length}
-              </div>
-              <Progress 
-                percent={Math.round(processingProgress)} 
-                status={processingStatus === 'error' ? 'exception' : 'active'}
+    return (
+      <>
+        <Modal
+          title={t('batchProcessing.title')}
+          open={visible}
+          onCancel={onClose}
+          footer={null}
+          width={1000}
+          className="batch-processing-modal"
+        >
+          <div className="batch-processing-container">
+            {/* 批量处理配置 */}
+            <Card title={t('batchProcessing.configuration')} size="small" style={{ marginBottom: 16 }}>
+              <Form layout="inline">
+                <Form.Item label={t('batchProcessing.outputFormat')}>
+                  <Select
+                    value={batchConfig.outputFormat}
+                    onChange={(value) => setBatchConfig(prev => ({ ...prev, outputFormat: value }))}
+                    style={{ width: 120 }}
+                  >
+                    <Option value="detailed">{t('batchProcessing.format.detailed')}</Option>
+                    <Option value="summary">{t('batchProcessing.format.summary')}</Option>
+                    <Option value="statistical">{t('batchProcessing.format.statistical')}</Option>
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item label={t('batchProcessing.exportFormat')}>
+                  <Select
+                    value={batchConfig.exportFormat}
+                    onChange={(value) => setBatchConfig(prev => ({ ...prev, exportFormat: value }))}
+                    style={{ width: 100 }}
+                  >
+                    <Option value="pdf">PDF</Option>
+                    <Option value="word">Word</Option>
+                    <Option value="excel">Excel</Option>
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    type="primary"
+                    icon={<PlayCircleOutlined />}
+                    onClick={startBatchProcessing}
+                    loading={processingStatus === 'processing'}
+                    disabled={fileList.length === 0 || processingStatus === 'processing'}
+                  >
+                    {t('batchProcessing.startProcessing')}
+                  </Button>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    icon={<PauseCircleOutlined />}
+                    onClick={pauseBatchProcessing}
+                    disabled={processingStatus !== 'processing'}
+                  >
+                    {t('batchProcessing.pause')}
+                  </Button>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    onClick={resumeBatchProcessing}
+                    disabled={processingStatus !== 'paused'}
+                  >
+                    {t('batchProcessing.resume')}
+                  </Button>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    onClick={stopBatchProcessing}
+                    disabled={processingStatus === 'idle'}
+                  >
+                    {t('batchProcessing.stop')}
+                  </Button>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    type="default"
+                    icon={<DownloadOutlined />}
+                    onClick={batchDownload}
+                    disabled={!fileList.some(file => file.status === 'completed')}
+                  >
+                    {t('batchProcessing.batchDownload')}
+                  </Button>
+                </Form.Item>
+                
+                <Form.Item>
+                  <Button
+                    type="primary"
+                    icon={<FileTextOutlined />}
+                    onClick={handleGenerateReport}
+                    disabled={!fileList.some(file => file.status === 'completed')}
+                    loading={reportGenerating}
+                  >
+                    {t('batch.generateReport')}
+                  </Button>
+                </Form.Item>
+              </Form>
+              
+              {/* 总体进度 */}
+              {processingStatus !== 'idle' && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <strong>{t('batchProcessing.overallProgress')}:</strong>
+                    {currentProcessingIndex + 1} / {fileList.length}
+                  </div>
+                  <Progress 
+                    percent={Math.round(processingProgress)} 
+                    status={processingStatus === 'error' ? 'exception' : 'active'}
+                  />
+                </div>
+              )}
+            </Card>
+
+            {/* 文件上传区域 */}
+            <Card title={t('batchProcessing.fileUpload')} size="small" style={{ marginBottom: 16 }}>
+              <Dragger {...uploadProps}>
+                <p className="ant-upload-drag-icon">
+                  <UploadOutlined />
+                </p>
+                <p className="ant-upload-text">{t('batchProcessing.uploadText')}</p>
+                <p className="ant-upload-hint">{t('batchProcessing.uploadHint')}</p>
+              </Dragger>
+            </Card>
+
+            {/* 文件列表 */}
+            <Card title={`${t('batchProcessing.fileList')} (${fileList.length})`} size="small">
+              <Table
+                columns={columns}
+                dataSource={fileList}
+                rowKey="uid"
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showTotal: (total) => t('common.totalItems', { total })
+                }}
+                scroll={{ x: 800 }}
               />
-            </div>
-          )}
-        </Card>
-
-        {/* 文件上传区域 */}
-        <Card title={t('batchProcessing.fileUpload')} size="small" style={{ marginBottom: 16 }}>
-          <Dragger {...uploadProps}>
-            <p className="ant-upload-drag-icon">
-              <UploadOutlined />
-            </p>
-            <p className="ant-upload-text">{t('batchProcessing.uploadText')}</p>
-            <p className="ant-upload-hint">{t('batchProcessing.uploadHint')}</p>
-          </Dragger>
-        </Card>
-
-        {/* 文件列表 */}
-        <Card title={`${t('batchProcessing.fileList')} (${fileList.length})`} size="small">
-          <Table
-            columns={fileColumns}
-            dataSource={fileList}
-            rowKey="uid"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => t('common.totalItems', { total })
-            }}
-            scroll={{ x: 800 }}
-          />
-        </Card>
-      </div>
-    </Modal>
-  );
-};
+            </Card>
+          </div>
+        </Modal>
+        <DocumentPreview
+          visible={previewVisible}
+          onClose={() => setPreviewVisible(false)}
+          fileData={previewFileData?.data}
+          fileName={previewFileData?.fileName}
+          fileType={previewFileData?.fileType}
+        />
+      </>
+    );
+  };
 
 export default BatchProcessing;

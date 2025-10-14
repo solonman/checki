@@ -1,8 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react'; // 添加lazy和Suspense导入
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { FileTextOutlined, HomeOutlined } from '@ant-design/icons';
+import DocumentPreview from './components/DocumentPreview';
 import { I18nProvider } from './context/i18nContext';
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { proofreadTextWithOpenAI, generateProofreadingReport } from './utils/proofreadingService';
 import PrivateRoute from './components/PrivateRoute';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -12,6 +12,10 @@ import supabase from './utils/supabaseClient';
 import fileQueue from './utils/fileProcessingQueue';
 import './App.css';
 
+// 导入新的上下文提供者
+import { ContextProvider } from './contexts/ContextProvider';
+import { useAuth } from './contexts/AuthContext';
+
 // 使用React.lazy实现代码分割和懒加载
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
@@ -20,11 +24,12 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const DocxTest = lazy(() => import('./components/DocxTest'));
 
 function App() {
   return (
     <I18nProvider>
-      <AuthProvider>
+      <ContextProvider>
         <Router>
           <Suspense fallback={<div className="loading-page">加载中...</div>}>
             <Routes>
@@ -36,10 +41,11 @@ function App() {
               <Route path="/profile" element={<PrivateRoute><UserProfilePage /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
               <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminDashboardPage /></ProtectedRoute>} />
+              <Route path="/docx-test" element={<PrivateRoute><DocxTest /></PrivateRoute>} />
             </Routes>
           </Suspense>
         </Router>
-      </AuthProvider>
+      </ContextProvider>
     </I18nProvider>
   );
 }
@@ -86,6 +92,8 @@ function MainLayout() {
   const [newStandardInfo, setNewStandardInfo] = useState('');
   const [previewContent, setPreviewContent] = useState(null);
   const [previewType, setPreviewType] = useState('');
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewFileData, setPreviewFileData] = useState(null);
   // 统计信息状态
   const [statistics, setStatistics] = useState({
     totalFiles: 0,
@@ -330,29 +338,38 @@ function MainLayout() {
   };
 
   // 预览标准信息或LOGO
-  const handlePreview = (content, type) => {
-    // 增强预览功能，根据内容类型进行适当处理
+  const handlePreview = (content, type, fileName = '预览文件', fileType = null) => {
+    // 使用新的预览组件
+    setPreviewFileData({
+      data: content,
+      type,
+      fileName,
+      fileType
+    });
+    setPreviewVisible(true);
+  };
+
+  // 关闭预览
+  const handleClosePreview = () => {
+    setPreviewVisible(false);
+    setPreviewFileData(null);
+  };
+
+  // 保留旧的预览逻辑以兼容现有调用（逐步迁移）
+  const handleOldPreview = (content, type) => {
     if (type === 'text') {
-      // 确保文本内容格式正确，处理特殊情况
       let processedContent = content;
       if (typeof processedContent !== 'string') {
         processedContent = String(processedContent);
       }
-      // 处理空内容
       if (!processedContent.trim()) {
         processedContent = '文件内容为空';
       }
       setPreviewContent(processedContent);
     } else {
-      // 图片内容直接设置
       setPreviewContent(content);
     }
     setPreviewType(type);
-  };
-
-  // 关闭预览
-  const handleClosePreview = () => {
-    setPreviewContent(null);
   };
 
   // 删除标准信息
@@ -1219,7 +1236,7 @@ function MainLayout() {
                             }}>
                               <div 
                                 style={{ cursor: 'pointer', color: '#333' }}
-                                onClick={() => handlePreview(previewContent, previewType)}
+                                onClick={() => handleOldPreview(previewContent, previewType)}
                               >
                                 {title}
                               </div>
@@ -1259,6 +1276,23 @@ function MainLayout() {
               <div className="document-title">
                 {currentTask}
               </div>
+              {/* 预览按钮 */}
+              <button 
+                className="preview-btn"
+                onClick={() => handlePreview(extractedContent, fileType, currentTask)}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#1890ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  marginRight: '12px'
+                }}
+              >
+                预览文档
+              </button>
               {/* 右侧操作按钮 */}
               <div className="header-actions">
                 <button className="new-task-btn" onClick={handleNewTask}>
@@ -1463,7 +1497,16 @@ function MainLayout() {
         )}
       </main>
       
-      {/* 预览弹窗 */}
+      {/* 文档预览组件 */}
+      <DocumentPreview
+        visible={previewVisible}
+        onClose={handleClosePreview}
+        fileData={previewFileData?.data}
+        fileName={previewFileData?.fileName}
+        fileType={previewFileData?.fileType}
+      />
+      
+      {/* 旧的预览弹窗（保留以兼容现有调用） */}
       {previewContent && (
         <div style={{
           position: 'fixed',
@@ -1492,7 +1535,7 @@ function MainLayout() {
                 {previewType === 'text' ? '文本预览' : '图片预览'}
               </h3>
               <button 
-                onClick={handleClosePreview}
+                onClick={() => setPreviewContent(null)}
                 style={{
                   background: 'none',
                   border: 'none',

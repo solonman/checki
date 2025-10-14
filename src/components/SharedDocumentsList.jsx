@@ -11,7 +11,7 @@ import {
   FileTextOutlined,
   PictureOutlined
 } from '@ant-design/icons';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { getUserSharedDocuments } from '../utils/documentSharingService';
 import supabase from '../utils/supabaseClient';
 

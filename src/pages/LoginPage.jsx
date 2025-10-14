@@ -1,7 +1,7 @@
 import { Card, Form, Input, Button, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useState } from 'react'; // 添加缺失的useState导入
 import '../styles/auth.css';
 
@@ -28,7 +28,7 @@ const LoginPage = () => {
       <div className="auth-content">
         {/* 在红框处添加logo */}
         <div className="logo-container">
-          <img src="/logo小.png" alt="AI校对应用" className="login-logo" />
+          <img src="/checki.png" alt="AI校对应用" className="login-logo" />
         </div>
         <Card title="登录" className="auth-card">
           <Form

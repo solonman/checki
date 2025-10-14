@@ -2,7 +2,7 @@ import React from 'react';
 import { Layout, Button, Typography, Card, Row, Col, Avatar } from 'antd';
 import { UploadOutlined, FileTextOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/dashboard.css';
 
 const { Header, Content } = Layout;

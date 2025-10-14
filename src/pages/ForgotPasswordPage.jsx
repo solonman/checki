@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { Card, Form, Input, Button, message } from 'antd';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/auth.css';
 
 const ForgotPasswordPage = () => {

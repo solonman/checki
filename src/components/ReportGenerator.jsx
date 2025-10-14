@@ -26,7 +26,7 @@ import {
   CheckCircleOutlined,
   ArrowRightOutlined
 } from '@ant-design/icons';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import supabase from '../utils/supabaseClient';
 import { 
   generateSingleReport, 

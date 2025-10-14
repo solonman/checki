@@ -25,7 +25,8 @@
     "build": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
-    "analyze": "source-map-explorer 'build/static/js/*.js'"
+    "analyze": "source-map-explorer 'build/static/js/*.js'",
+    "init-db": "node init-database.js"
   },
   "eslintConfig": {
     "extends": [

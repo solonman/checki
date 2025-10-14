@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, message, Avatar } from 'antd';
 import { UserOutlined, MailOutlined } from '@ant-design/icons';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/userProfile.css';
 
 const UserProfilePage = () => {

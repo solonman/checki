@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Form, Input, Button, message } from 'antd';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/auth.css';
 
 const ResetPasswordPage = () => {

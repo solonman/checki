@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SettingOutlined, BellOutlined, UserOutlined } from '@ant-design/icons';
 import { Form, Select, Button, Card, Divider, Switch, message, Typography, Input } from 'antd';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../context/i18nContext';
 import '../styles/settings.css';
 

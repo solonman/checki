@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Card, Typography, Row, Col, Button, Table, Tag, message } from 'antd';
 import { UserOutlined, DatabaseOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import '../styles/adminDashboard.css';
 
