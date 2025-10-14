@@ -1,0 +1,125 @@
+/* 设置页面样式 */
+.settings-container {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.settings-header {
+  margin-bottom: 30px;
+}
+
+.settings-card {
+  width: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.settings-form {
+  padding: 20px 0;
+}
+
+.settings-section {
+  margin-bottom: 40px;
+}
+
+.settings-section .ant-typography-h4 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.settings-section .ant-divider {
+  margin-bottom: 24px;
+}
+
+/* 通知设置样式 */
+.notification-label {
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.notification-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-text {
+  margin-left: 12px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* 操作按钮样式 */
+.settings-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.save-button {
+  padding: 8px 24px;
+  font-size: 14px;
+}
+
+.reset-button {
+  padding: 8px 24px;
+  font-size: 14px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 10px;
+  }
+  
+  .settings-card {
+    padding: 16px;
+  }
+  
+  .settings-actions {
+    flex-direction: column;
+  }
+  
+  .save-button,
+  .reset-button {
+    width: 100%;
+  }
+}
+
+/* 暗黑主题支持 */
+.dark-theme {
+  background-color: #141414;
+  color: #e0e0e0;
+}
+
+.dark-theme .settings-card {
+  background-color: #252525;
+  color: #e0e0e0;
+  border-color: #333;
+}
+
+.dark-theme .ant-divider {
+  background-color: #333;
+}
+
+.dark-theme .ant-typography {
+  color: #e0e0e0;
+}
+
+.dark-theme .ant-form-item-label > label {
+  color: #e0e0e0;
+}
+
+.dark-theme .notification-text {
+  color: #ccc;
+}
+
+.dark-theme .notification-item {
+  border-bottom-color: #333;
+}

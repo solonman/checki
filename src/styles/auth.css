@@ -1,0 +1,153 @@
+/* 登录/注册页面容器样式 */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 70vh;
+  background-color: #f0f2f5;
+  overflow: hidden; /* 防止页面滚动 */
+}
+
+/* 内容容器样式 */
+.auth-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 400px;
+  height: auto;
+  max-height: 80vh; /* 限制内容高度，避免出现滚动条 */
+}
+
+/* Logo容器样式 */
+.logo-container {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* Logo图片样式 */
+.login-logo {
+  width: 200px; /* 根据需要调整logo大小 */
+  height: auto;
+}
+
+/* 卡片样式 */
+.auth-card {
+  width: 360px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-top: 0;
+  background-color: transparent; /* 去掉卡片的白色背景 */
+  border: none; /* 移除边框 */
+}
+
+/* 增加输入框高度 - 使用更精确的选择器 */
+.auth-card .ant-input {
+  height: 40px !important; /* 增加输入框高度并确保优先级 */
+  font-size: 14px;
+}
+
+/* 确保密码输入框高度与邮箱输入框一致 - 使用更精确的选择器 */
+.auth-card .ant-input-password, 
+.auth-card .ant-input-password .ant-input, 
+.auth-card .ant-input-password > input {
+  height: 40px !important; /* 确保所有层级的密码输入框都有相同高度 */
+}
+
+/* 确保图标和文字垂直对齐 */
+.auth-card .ant-input-affix-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  height: 40px !important; /* 统一设置带图标的输入框高度 */
+}
+
+.auth-card .ant-input-affix-wrapper .ant-input-prefix,
+.auth-card .ant-input-affix-wrapper .ant-input-suffix {
+  display: flex;
+  align-items: center;
+}
+
+/* 调整图标大小以更好地与文字对齐 */
+.auth-card .ant-input-prefix .anticon,
+.auth-card .ant-input-suffix .anticon {
+  font-size: 16px;
+}
+
+/* 登录按钮样式 */
+.login-button {
+  width: 100%;
+  height: 40px; /* 调整登录按钮高度以匹配输入框 */
+  margin-bottom: 0;
+}
+
+/* 注册链接样式 */
+.register-link {
+  display: block;
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* 调整表单间距 */
+.auth-card .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* 标题样式 - 确保完全上下居中 */
+.auth-card > .ant-card-head {
+  background-color: transparent !important;
+  border-bottom: none !important;
+  padding: 0 !important;
+  min-height: 40px !important;
+  height: 40px !important;
+  margin: 0 !important;
+}
+
+.auth-card > .ant-card-head > .ant-card-head-wrapper {
+  padding: 0 !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: auto !important;
+  width: auto !important;
+}
+
+.auth-card > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title {
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: center !important;
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 40px !important;
+  height: 40px !important;
+  min-width: auto !important;
+  width: auto !important;
+  white-space: nowrap;
+}
+
+/* 确保没有其他元素影响 */
+.auth-card > .ant-card-head > .ant-card-head-wrapper > .ant-card-extra {
+  display: none !important;
+}
+
+/* 卡片主体样式 */
+.auth-card > .ant-card-body {
+  padding: 24px !important;
+  background-color: #ffffff !important;
+  border-radius: 8px !important;
+  margin-top: 0 !important;
+  padding-bottom: 16px !important;
+}
+
+/* 确保表单内部元素没有额外的外边距 */
+.auth-card .ant-form {
+  margin-bottom: 0;
+}
+
+/* 调整注册链接的位置 */
+.auth-card .ant-form-item:last-child {
+  margin-bottom: 0;
+}
