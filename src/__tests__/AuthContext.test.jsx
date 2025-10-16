@@ -116,7 +116,7 @@ describe('AuthContext 测试', () => {
         expect(authContext.user).toBeNull();
         expect(authContext.loading).toBe(false);
         expect(typeof authContext.login).toBe('function');
-        expect(typeof authContext.signup).toBe('function');
+        expect(typeof authContext.register).toBe('function');
         expect(typeof authContext.logout).toBe('function');
       });
     });
@@ -148,7 +148,7 @@ describe('AuthContext 测试', () => {
         return (
           <div>
             <button data-testid="login-btn" onClick={() => authContext.login('test@example.com', 'password')} />
-            <button data-testid="signup-btn" onClick={() => authContext.signup('test@example.com', 'password', 'Test User')} />
+            <button data-testid="register-btn" onClick={() => authContext.register('test@example.com', 'password', 'Test User')} />
             <button data-testid="logout-btn" onClick={() => authContext.logout()} />
           </div>
         );
@@ -183,14 +183,14 @@ describe('AuthContext 测试', () => {
       await expect(authContext.login('test@example.com', 'wrong-password')).rejects.toThrow('Invalid credentials');
     });
 
-    test('signup 方法应正确调用supabase.auth.signUp', async () => {
+    test('register 方法应正确调用supabase.auth.signUp', async () => {
       const mockUserData = {
         user: { id: 'user-123', email: 'test@example.com' },
         session: null
       };
       mockSupabase.auth.signUp.mockResolvedValue({ data: mockUserData, error: null });
 
-      await authContext.signup('test@example.com', 'password', 'Test User');
+      await authContext.register('test@example.com', 'password', 'Test User');
 
       expect(mockSupabase.auth.signUp).toHaveBeenCalledWith({
         email: 'test@example.com',

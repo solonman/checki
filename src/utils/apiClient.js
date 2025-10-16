@@ -1,10 +1,25 @@
 // API客户端配置
 import supabase from './supabaseClient';
+import { initializeDatabase } from './databaseSchema';
+import { quickHealthCheck } from './databaseHealth';
 
 /**
  * 用户认证相关API
  */
 export const authAPI = {
+  // 健康检查 - 使用轻量级检查
+  healthCheck: async () => {
+    try {
+      return await quickHealthCheck();
+    } catch (error) {
+      console.warn('认证健康检查失败:', error.message);
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  },
+  
   // 用户注册
   register: async (email, password, metadata = {}) => {
     try {
@@ -70,16 +85,76 @@ export const authAPI = {
     }
   },
   
-  // 发送密码重置邮件
+  // 发送密码重置邮件（添加超时保护）
   resetPassword: async (email) => {
     try {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      console.log('API: 开始发送密码重置邮件给:', email);
+      
+      // 创建超时Promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 10000); // 10秒超时
+      });
+      
+      // 创建API请求Promise - 使用正确的重定向URL
+      const apiPromise = supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
+      
+      // 使用Promise.race实现超时控制
+      const { data, error } = await Promise.race([apiPromise, timeoutPromise]);
+      
+      console.log('API: 密码重置邮件发送结果:', { data, error });
       if (error) throw error;
       return { success: true, data };
     } catch (error) {
+      console.error('API: 发送密码重置邮件失败:', error);
       return { success: false, error: error.message };
+    }
+  },
+
+  // 确认密码重置（正确的Supabase流程）
+  confirmResetPassword: async (newPassword) => {
+    try {
+      console.log('API: 开始确认密码重置');
+      
+      // 添加超时保护，避免请求卡住
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('密码重置请求超时，请重试')), 30000)
+      );
+      
+      // 正确的密码重置流程：直接更新用户密码
+      // Supabase会在PASSWORD_RECOVERY事件中自动处理令牌验证
+      const updatePromise = (async () => {
+        console.log('API: 正在更新用户密码...');
+        
+        const { data, error } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+        
+        if (error) {
+          console.error('API: 密码更新失败:', error);
+          throw error;
+        }
+        
+        console.log('API: 密码更新成功');
+        return data;
+      })();
+      
+      const data = await Promise.race([updatePromise, timeoutPromise]);
+      
+      console.log('API: Supabase响应:', { data });
+      console.log('API: 密码重置成功');
+      return { success: true, data };
+    } catch (error) {
+      console.error('API: 密码重置异常:', error);
+      
+      // 提供更友好的错误信息
+      let errorMessage = error.message || '密码重置失败，请重试';
+      if (error.message.includes('invalid') || error.message.includes('expired')) {
+        errorMessage = '重置链接无效或已过期，请重新请求密码重置';
+      }
+      
+      return { success: false, error: errorMessage };
     }
   },
 };
@@ -93,13 +168,21 @@ export const userAPI = {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, username, email, full_name, avatar_url, role, created_at, updated_at')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
       
-      if (error) throw error;
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // 记录不存在
+          return { success: true, data: null };
+        }
+        throw error;
+      }
+      
       return { success: true, data };
     } catch (error) {
+      console.error('获取用户资料失败:', error);
       return { success: false, error: error.message };
     }
   },
@@ -167,19 +250,44 @@ export const userAPI = {
  * 项目相关API
  */
 export const projectAPI = {
+  // 健康检查 - 使用轻量级检查
+  healthCheck: async () => {
+    try {
+      return await quickHealthCheck();
+    } catch (error) {
+      console.warn('健康检查失败:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        responseTime: null
+      };
+    }
+  },
+  
   // 获取用户的所有项目
   getUserProjects: async (userId) => {
     try {
+      if (!userId) {
+        return { success: true, data: [] };
+      }
+      
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, name, description, is_active, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      return { success: true, data };
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { success: true, data: [] };
+        }
+        throw error;
+      }
+      
+      return { success: true, data: data || [] };
     } catch (error) {
-      return { success: false, error: error.message };
+      console.error('获取用户项目失败:', error);
+      return { success: false, error: error.message, data: [] };
     }
   },
   

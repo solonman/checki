@@ -43,17 +43,15 @@ const SharedDocumentsList = ({ onDocumentSelect }) => {
       } else {
         // 加载我共享的文档（需要从proofreading_tasks表获取）
         const { data, error } = await supabase
-          .from('proofreading_tasks')
+          .from('tasks')
           .select(`
             id,
-            file_name,
-            file_path,
-            file_url,
-            file_type,
-            content_type,
-            project,
+            name,
+            status,
+            progress,
+            priority,
             created_at,
-            status
+            updated_at
           `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });

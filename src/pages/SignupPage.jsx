@@ -6,20 +6,24 @@ import { useState } from 'react'; // 添加useState导入
 import '../styles/auth.css';
 
 const SignupPage = () => {
-  const [loading, setLoading] = useState(false);
-  const { signup } = useAuth();
+  const { register, loading } = useAuth();
+  const [formLoading, setFormLoading] = useState(false);
   const navigate = useNavigate();
 
   const onFinish = async (values) => {
-    setLoading(true);
+    setFormLoading(true);
     try {
-      await signup(values.email, values.password, values.name);
-      message.success('注册成功，请登录');
-      navigate('/login');
+      const result = await register(values.email, values.password, values.name);
+      if (result.success) {
+        message.success(result.message || '注册成功，请登录');
+        navigate('/login');
+      } else {
+        message.error(result.error || '注册失败，请重试');
+      }
     } catch (error) {
       message.error(error.message || '注册失败，请重试');
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
@@ -55,7 +59,7 @@ const SignupPage = () => {
               <Input.Password prefix={<LockOutlined />} placeholder="密码" />
             </Form.Item>
             <Form.Item>
-              <Button type="primary" htmlType="submit" className="login-button" loading={loading}>
+              <Button type="primary" htmlType="submit" className="login-button" loading={loading || formLoading}>
                 注册
               </Button>
               <span className="register-link">

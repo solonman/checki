@@ -17,6 +17,10 @@ export const initializeDatabase = async () => {
     await setupStorageBuckets();
     console.log('存储桶设置完成');
     
+    // 3. 设置用户注册触发器
+    await setupUserRegistrationTrigger();
+    console.log('用户注册触发器设置完成');
+    
     return { success: true, message: '数据库初始化成功' };
   } catch (error) {
     console.error('数据库初始化失败:', error);
@@ -33,48 +37,48 @@ export const initializeDatabase = async () => {
  */
 export const setupStorageBuckets = async () => {
   try {
-    // 存储桶配置数组
+    console.log('开始设置存储桶...');
+    
     const buckets = [
       {
         name: 'avatars',
-        public: true,
-        description: '用户头像存储'
+        options: {
+          public: true,
+          allowedMimeTypes: ['image/*'],
+          fileSizeLimit: 5 * 1024 * 1024 // 5MB
+        }
       },
       {
         name: 'files',
-        public: false,
-        description: '上传文件存储'
+        options: {
+          public: true,
+          allowedMimeTypes: ['*'],
+          fileSizeLimit: 10 * 1024 * 1024 // 10MB
+        }
       },
       {
         name: 'documents',
-        public: false,
-        description: '项目文档存储'
+        options: {
+          public: true,
+          allowedMimeTypes: ['application/pdf', 'text/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+          fileSizeLimit: 20 * 1024 * 1024 // 20MB
+        }
       }
     ];
 
-    // 创建或更新存储桶
     for (const bucket of buckets) {
-      // 检查存储桶是否存在
-      const { data: existingBucket, error: checkError } = await supabase.storage
-        .getBucket(bucket.name);
-      
-      if (!existingBucket) {
-        // 创建新存储桶
-        await supabase.storage.createBucket(bucket.name, { 
-          public: bucket.public,
-          allowedMimeTypes: getBucketAllowedMimeTypes(bucket.name),
-          fileSizeLimit: bucket.name === 'avatars' ? 5 * 1024 * 1024 : 50 * 1024 * 1024 // 头像5MB，其他50MB
-        });
-        console.log(`创建存储桶 ${bucket.name} 成功`);
-      } else {
-        console.log(`存储桶 ${bucket.name} 已存在`);
-      }
-      
-      // 设置存储桶权限策略（对于非公开存储桶）
-      if (!bucket.public) {
-        await setupStorageAccessPolicy(bucket.name);
+      try {
+        const created = await createBucketIfNotExists(bucket.name, bucket.options);
+        if (created) {
+          await setBucketPolicy(bucket.name);
+        }
+      } catch (error) {
+        console.warn(`处理存储桶 ${bucket.name} 时出错，继续处理其他存储桶:`, error.message);
       }
     }
+
+    console.log('存储桶设置完成');
+    return true;
   } catch (error) {
     console.error('设置存储桶失败:', error);
     throw error;
@@ -242,9 +246,130 @@ export const runMigrations = async () => {
   }
 };
 
+/**
+ * 设置用户注册触发器
+ */
+const setupUserRegistrationTrigger = async () => {
+  try {
+    console.log('开始设置用户注册触发器...');
+    
+    // 创建触发器函数
+    const triggerFunctionSQL = `
+      CREATE OR REPLACE FUNCTION public.handle_new_user()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        -- 在users表中插入新用户记录
+        INSERT INTO public.users (
+          id,
+          email,
+          full_name,
+          username,
+          role,
+          created_at,
+          updated_at
+        ) VALUES (
+          NEW.id,
+          NEW.email,
+          COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+          COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
+          'user',
+          NOW(),
+          NOW()
+        );
+        
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql SECURITY DEFINER;
+    `;
+    
+    // 创建触发器
+    const triggerSQL = `
+      DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+      CREATE TRIGGER on_auth_user_created
+        AFTER INSERT ON auth.users
+        FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+    `;
+    
+    // 尝试执行SQL
+    try {
+      await supabase.rpc('execute_sql', { sql: triggerFunctionSQL });
+      await supabase.rpc('execute_sql', { sql: triggerSQL });
+      console.log('用户注册触发器设置成功');
+    } catch (error) {
+      console.log('通过RPC设置触发器失败，请手动执行SQL:', error);
+      console.log('触发器函数SQL:');
+      console.log(triggerFunctionSQL);
+      console.log('触发器SQL:');
+      console.log(triggerSQL);
+    }
+    
+  } catch (error) {
+    console.error('设置用户注册触发器失败:', error);
+    // 不抛出错误，因为触发器是可选的
+  }
+};
+
 export default {
   initializeDatabase,
   setupStorageBuckets,
   checkDatabaseInitialized,
-  runMigrations
+  runMigrations,
+  setupUserRegistrationTrigger
 };
+
+  // 检查存储桶是否存在
+  const checkBucketExists = async (bucketName) => {
+    try {
+      const { data, error } = await supabase.storage.from(bucketName).list('', { limit: 1 });
+      return !error;
+    } catch (error) {
+      console.warn(`检查存储桶 ${bucketName} 时出错:`, error.message);
+      return false;
+    }
+  };
+
+  // 创建存储桶（如果不存在）
+  const createBucketIfNotExists = async (bucketName, options) => {
+    try {
+      const exists = await checkBucketExists(bucketName);
+      if (exists) {
+        console.log(`存储桶 ${bucketName} 已存在`);
+        return true;
+      }
+
+      console.log(`创建存储桶: ${bucketName}`);
+      const { data, error } = await supabase.storage.createBucket(bucketName, options);
+      
+      if (error) {
+        console.error(`创建存储桶 ${bucketName} 失败:`, error.message);
+        return false;
+      }
+      
+      console.log(`存储桶 ${bucketName} 创建成功`);
+      return true;
+    } catch (error) {
+      console.error(`创建存储桶 ${bucketName} 时发生错误:`, error.message);
+      return false;
+    }
+  };
+
+  // 设置存储桶访问策略
+  const setBucketPolicy = async (bucketName) => {
+    try {
+      console.log(`设置存储桶 ${bucketName} 的访问策略`);
+      
+      // 设置存储桶为公开访问
+      const { error } = await supabase.storage.from(bucketName).setPublicAccess(true);
+      
+      if (error) {
+        console.error(`设置存储桶 ${bucketName} 访问策略失败:`, error.message);
+        return false;
+      }
+      
+      console.log(`存储桶 ${bucketName} 访问策略设置成功`);
+      return true;
+    } catch (error) {
+      console.error(`设置存储桶 ${bucketName} 访问策略时发生错误:`, error.message);
+      return false;
+    }
+  };

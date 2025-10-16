@@ -22,21 +22,67 @@ const SignupPage = lazy(() => import('./pages/SignupPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const TestResetLinkPage = lazy(() => import('./pages/TestResetLinkPage'));
+const PasswordResetTestPage = lazy(() => import('./pages/PasswordResetTestPage'));
+const SupabaseAuthDiagnostics = lazy(() => import('./pages/SupabaseAuthDiagnostics'));
+const SupabasePasswordResetFlowTest = lazy(() => import('./pages/SupabasePasswordResetFlowTest'));
+const PasswordResetLinkDiagnostics = lazy(() => import('./pages/PasswordResetLinkDiagnostics'));
+const PasswordResetDiagnosticsReport = lazy(() => import('./pages/PasswordResetDiagnosticsReport'));
+const PasswordResetDebugPage = lazy(() => import('./pages/PasswordResetDebugPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const DocxTest = lazy(() => import('./components/DocxTest'));
+
+// 加载页面组件
+const LoadingPage = () => {
+  const [loadingTime, setLoadingTime] = useState(0);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLoadingTime(prev => prev + 1);
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, []);
+  
+  return (
+    <div className="loading-page">
+      <div className="loading-content">
+        <div className="loading-spinner"></div>
+        <h2>加载中...</h2>
+        {loadingTime > 3 && (
+          <div className="loading-tips">
+            <p>正在连接服务，请稍候</p>
+            {loadingTime > 8 && (
+              <p style={{ color: '#ff4d4f', fontSize: '14px' }}>
+                连接超时，请检查网络连接或稍后重试
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 function App() {
   return (
     <I18nProvider>
       <ContextProvider>
         <Router>
-          <Suspense fallback={<div className="loading-page">加载中...</div>}>
+          <Suspense fallback={<LoadingPage />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/test-reset-link" element={<TestResetLinkPage />} />
+              <Route path="/test-password-reset" element={<PasswordResetTestPage />} />
+              <Route path="/auth-diagnostics" element={<SupabaseAuthDiagnostics />} />
+              <Route path="/password-reset-flow-test" element={<SupabasePasswordResetFlowTest />} />
+              <Route path="/password-reset-diagnostics" element={<PasswordResetLinkDiagnostics />} />
+              <Route path="/password-reset-report" element={<PasswordResetDiagnosticsReport />} />
+              <Route path="/password-reset-debug" element={<PasswordResetDebugPage />} />
               <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>} />
               <Route path="/profile" element={<PrivateRoute><UserProfilePage /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
@@ -498,7 +544,7 @@ function MainLayout() {
         // 上传文件到Supabase存储
         onProgress && onProgress({ stage: 'uploading', progress: 0.1 });
         const { data, error } = await supabase.storage
-          .from('proofreading_files')
+          .from('files')
           .upload(`/${user.id}/${uniqueFileName}`, file, { contenttype: file.type });
         
         if (error) {
@@ -508,7 +554,7 @@ function MainLayout() {
         // 获取上传文件的公共URL
         onProgress && onProgress({ stage: 'uploading', progress: 0.2 });
         const { data: { publicUrl } } = supabase.storage
-          .from('proofreading_files')
+          .from('files')
           .getPublicUrl(`/${user.id}/${uniqueFileName}`);
           
         // 提取文件内容用于AI校对

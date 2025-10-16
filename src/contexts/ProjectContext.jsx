@@ -33,18 +33,54 @@ export const ProjectProvider = ({ children }) => {
         try {
           setLoading(true);
           
-          // 检查数据库是否已初始化
-          const status = await checkDatabaseInitialized();
+          // 首先进行健康检查，获取响应时间
+          const healthCheck = await projectAPI.healthCheck().catch(() => ({ 
+            success: false, 
+            error: '健康检查失败' 
+          }));
           
-          if (!status.initialized) {
-            // 初始化数据库
-            await initializeDatabase();
+          if (!healthCheck.success) {
+            console.warn('健康检查失败，但继续尝试初始化:', healthCheck.error);
+            // 如果健康检查失败，仍然尝试继续，可能是权限问题
           }
           
+          // 如果健康检查显示需要初始化，则进行初始化
+          if (healthCheck.needsInitialization) {
+            console.log('检测到数据库需要初始化，开始初始化过程...');
+            
+            try {
+              // 动态导入初始化函数，避免打包时包含
+              const { initializeDatabase } = await import('../utils/initializeDatabase');
+              
+              // 执行初始化，添加超时保护
+              const initPromise = initializeDatabase();
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('初始化步骤超时')), 10000) // 每个步骤10秒超时
+              );
+              
+              await Promise.race([initPromise, timeoutPromise]);
+              console.log('数据库初始化成功');
+              
+            } catch (initError) {
+              console.error('数据库初始化过程出错:', initError);
+              // 初始化失败但继续，可能是部分失败
+              if (initError.message === '初始化步骤超时') {
+                console.warn('数据库初始化超时，但可能部分成功');
+              }
+            }
+          } else {
+            console.log('数据库已初始化，跳过初始化过程');
+          }
+          
+          // 无论初始化是否成功，都标记为完成
           setDatabaseInitialized(true);
+          console.log('数据库设置完成');
+          
         } catch (err) {
-          console.error('数据库初始化失败:', err);
-          setError('数据库初始化失败，请稍后重试');
+          console.error('数据库设置失败:', err);
+          // 即使初始化失败，也允许用户继续使用应用
+          setDatabaseInitialized(true);
+          console.log('数据库设置失败，但允许继续使用应用');
         } finally {
           setLoading(false);
         }
@@ -61,6 +97,14 @@ export const ProjectProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
+      
+      // 检查服务是否可用
+      const healthCheck = await projectAPI.healthCheck().catch(() => ({ success: false }));
+      if (!healthCheck.success) {
+        console.warn('项目服务不可用，使用离线模式');
+        setProjects([]);
+        return;
+      }
       
       const response = await projectAPI.getUserProjects(user.id);
       

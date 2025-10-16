@@ -25,7 +25,7 @@ const ForgotPasswordPage = () => {
     <div className="auth-container">
       <div className="auth-content">
         <div className="logo-container">
-          <img src="/logo小.png" alt="AI校对应用" className="login-logo" />
+          <img src="/checki.png" alt="AI校对应用" className="login-logo" />
         </div>
         <Card title="重置密码" className="auth-card">
           <Form

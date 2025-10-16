@@ -7,31 +7,39 @@ import supabase from './supabaseClient';
  */
 export const initializeDatabase = async () => {
   try {
-    console.log('开始初始化数据库结构...');
+    console.log('开始初始化数据库...');
     
-    // 1. 创建用户信息表（扩展Supabase认证用户）
-    await createUsersTable();
+    // 按顺序创建表，确保依赖关系正确
+    const tableCreationSteps = [
+      { name: '用户表', func: createUsersTable },
+      { name: '项目表', func: createProjectsTable },
+      { name: '任务表', func: createTasksTable },
+      { name: '文件表', func: createFilesTable },
+      { name: '校对结果表', func: createProofreadingResultsTable },
+      { name: '团队成员表', func: createTeamMembersTable },
+      { name: '文档表', func: createDocumentsTable }
+    ];
     
-    // 2. 创建项目表
-    await createProjectsTable();
+    // 分批处理表创建，每批最多3个表
+    for (let i = 0; i < tableCreationSteps.length; i += 3) {
+      const batch = tableCreationSteps.slice(i, i + 3);
+      console.log(`创建表批次 ${Math.floor(i/3) + 1}: ${batch.map(item => item.name).join(', ')}`);
+      
+      await Promise.all(batch.map(async (step) => {
+        try {
+          await step.func();
+          console.log(`✓ ${step.name}创建成功`);
+        } catch (error) {
+          console.error(`✗ ${step.name}创建失败:`, error.message);
+          throw error;
+        }
+      }));
+    }
     
-    // 3. 创建任务表
-    await createTasksTable();
-    
-    // 4. 创建文件表
-    await createFilesTable();
-    
-    // 5. 创建校对结果表
-    await createProofreadingResultsTable();
-    
-    // 6. 创建团队成员表
-    await createTeamMembersTable();
-    
-    // 7. 创建文档表
-    await createDocumentsTable();
-    
-    // 8. 设置行级安全策略
+    // 设置行级安全策略
+    console.log('设置行级安全策略...');
     await setupRowLevelSecurity();
+    console.log('✓ 行级安全策略设置成功');
     
     console.log('数据库初始化完成！');
     return { success: true, message: '数据库初始化成功' };

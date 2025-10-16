@@ -74,16 +74,15 @@ const ReportGenerator = ({ visible, onCancel, selectedTasks = [] }) => {
       
       // 从数据库获取已完成的任务
       const { data, error } = await supabase
-        .from('proofreading_tasks')
+        .from('tasks')
         .select(`
           id,
-          file_name,
-          file_path,
-          file_type,
-          project,
+          name,
           status,
+          progress,
+          priority,
           created_at,
-          proofreading_result
+          updated_at
         `)
         .eq('user_id', user.id)
         .eq('status', 'completed')

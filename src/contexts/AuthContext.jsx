@@ -22,36 +22,71 @@ export const AuthProvider = ({ children }) => {
         setLoading(true);
         setError(null);
         
-        // 监听认证状态变化
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          async (event, session) => {
-            if (session?.user) {
-              // 用户已登录
-              setUser(session.user);
-              
-              // 获取用户详细资料
-              await fetchUserProfile(session.user.id);
-            } else {
-              // 用户未登录或已登出
-              setUser(null);
-              setUserProfile(null);
-            }
-            setLoading(false);
-            setIsInitialized(true);
-          }
+        // 设置超时机制，防止无限等待
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('初始化超时')), 5000)
         );
         
-        // 检查当前用户
-        const currentUser = await authAPI.getCurrentUser();
-        if (currentUser.success && currentUser.user) {
-          setUser(currentUser.user);
-          await fetchUserProfile(currentUser.user.id);
-        }
+        // 尝试初始化，但设置超时
+        const initPromise = (async () => {
+          try {
+            // 首先检查网络连接和服务可用性
+            const healthCheck = await authAPI.healthCheck().catch(() => ({ success: false }));
+            
+            if (!healthCheck.success) {
+              console.warn('服务不可用，使用离线模式');
+              // 服务不可用，直接标记为初始化完成，使用离线模式
+              setUser(null);
+              setUserProfile(null);
+              setIsInitialized(true);
+              return;
+            }
+            
+            // 监听认证状态变化
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(
+              async (event, session) => {
+                if (session?.user) {
+                  // 用户已登录
+                  setUser(session.user);
+                  
+                  // 获取用户详细资料
+                  await fetchUserProfile(session.user.id);
+                } else {
+                  // 用户未登录或已登出
+                  setUser(null);
+                  setUserProfile(null);
+                }
+                setLoading(false);
+                setIsInitialized(true);
+              }
+            );
+            
+            // 检查当前用户
+            const currentUser = await authAPI.getCurrentUser();
+            if (currentUser.success && currentUser.user) {
+              setUser(currentUser.user);
+              await fetchUserProfile(currentUser.user.id);
+            }
+            
+            setIsInitialized(true);
+          } catch (err) {
+            console.error('认证初始化失败:', err);
+            // 即使认证失败，也允许用户继续使用应用
+            setUser(null);
+            setUserProfile(null);
+            setIsInitialized(true);
+          }
+        })();
         
-        setIsInitialized(true);
+        // 使用Promise.race设置超时
+        await Promise.race([initPromise, timeoutPromise]);
+        
       } catch (err) {
         console.error('初始化认证失败:', err);
-        setError('初始化认证失败，请刷新页面重试');
+        // 超时或其他错误，允许用户继续使用应用
+        setUser(null);
+        setUserProfile(null);
+        setIsInitialized(true);
       } finally {
         setLoading(false);
       }
@@ -113,10 +148,36 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
+      // 检查服务是否可用
+      const healthCheck = await authAPI.healthCheck().catch(() => ({ success: false }));
+      if (!healthCheck.success) {
+        return { success: false, error: '服务暂时不可用，请稍后重试' };
+      }
+      
       const metadata = fullName ? { full_name: fullName } : {};
       const response = await authAPI.register(email, password, metadata);
       
       if (response.success) {
+        // 注册成功后，尝试获取或创建用户资料
+        // 等待触发器创建用户记录，或手动创建
+        try {
+          if (response.data?.user?.id) {
+            // 等待一小段时间让触发器执行
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // 尝试获取用户资料
+            const profileResponse = await userAPI.getUserProfile(response.data.user.id);
+            if (!profileResponse.success || !profileResponse.data) {
+              // 如果触发器没有创建记录，手动创建
+              console.log('触发器未创建用户资料，手动创建...');
+              await createUserProfile(response.data.user.id);
+            }
+          }
+        } catch (profileError) {
+          console.warn('创建用户资料时出错:', profileError);
+          // 不中断注册流程，用户可以在后续操作中完善资料
+        }
+        
         return { success: true, message: '注册成功！请检查邮箱进行验证' };
       } else {
         setError(response.error);
@@ -139,13 +200,41 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
+      // 检查服务是否可用
+      const healthCheck = await authAPI.healthCheck().catch(() => ({ success: false }));
+      if (!healthCheck.success) {
+        return { success: false, error: '服务暂时不可用，请稍后重试' };
+      }
+      
       const response = await authAPI.login(email, password);
       
       if (response.success) {
+        // 登录成功后，主动获取用户信息
+        try {
+          const currentUser = await authAPI.getCurrentUser();
+          if (currentUser.success && currentUser.user) {
+            setUser(currentUser.user);
+            await fetchUserProfile(currentUser.user.id);
+          }
+        } catch (userError) {
+          console.warn('获取用户信息失败:', userError);
+          // 不中断登录流程，依赖onAuthStateChange事件
+        }
+        
         return { success: true, message: '登录成功！' };
       } else {
-        setError(response.error);
-        return { success: false, error: response.error };
+        // 优化错误信息显示
+        let userFriendlyError = response.error;
+        if (response.error.includes('Invalid login credentials')) {
+          userFriendlyError = '邮箱或密码错误，请检查后重试';
+        } else if (response.error.includes('Email not confirmed')) {
+          userFriendlyError = '邮箱未验证，请检查邮箱并完成验证';
+        } else if (response.error.includes('email_address_invalid')) {
+          userFriendlyError = '邮箱格式不正确，请输入有效的邮箱地址';
+        }
+        
+        setError(userFriendlyError);
+        return { success: false, error: userFriendlyError };
       }
     } catch (err) {
       const errorMessage = err.message || '登录失败，请稍后重试';
@@ -199,7 +288,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: response.error };
       }
     } catch (err) {
-      const errorMessage = err.message || '更新资料失败，请稍后重试';
+      const errorMessage = err.message || '更新用户资料失败';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -258,7 +347,14 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: response.error };
       }
     } catch (err) {
-      const errorMessage = err.message || '发送邮件失败，请稍后重试';
+      // 优化错误信息显示
+      let errorMessage = err.message || '发送邮件失败，请稍后重试';
+      if (err.message.includes('over_email_send_rate_limit')) {
+        errorMessage = '发送频率过高，请等待40秒后重试';
+      } else if (err.message.includes('timeout') || err.message.includes('Timeout')) {
+        errorMessage = '请求超时，请检查网络连接后重试';
+      }
+      
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -294,6 +390,37 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  /**
+   * 确认密码重置（通过邮件链接）
+   */
+  const confirmResetPassword = async (newPassword) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('AuthContext: 开始确认密码重置');
+      
+      const response = await authAPI.confirmResetPassword(newPassword);
+      
+      console.log('AuthContext: API响应结果:', response);
+      
+      if (response.success) {
+        return { success: true, message: '密码重置成功！' };
+      } else {
+        setError(response.error);
+        return { success: false, error: response.error };
+      }
+    } catch (err) {
+      const errorMessage = err.message || '密码重置失败，请重试';
+      console.error('AuthContext: 密码重置异常:', err);
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(false);
+      console.log('AuthContext: 确认密码重置流程结束');
+    }
+  };
+
   // 提供给子组件的值
   const value = {
     // 用户状态
@@ -311,6 +438,7 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     uploadAvatar,
     resetPassword,
+    confirmResetPassword,
     refreshToken,
     
     // 辅助方法

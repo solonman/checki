@@ -1,8 +1,8 @@
-import React, { createContext, useState, useContext, useCallback } from 'react';
+import React, { createContext, useState, useContext } from 'react';
 import { useAuth } from './AuthContext';
 import { useProject } from './ProjectContext';
 import { extractTextFromFile } from '../utils/documentParser';
-import { fileAPI, proofreadingAPI } from '../utils/apiClient';
+// import { fileAPI, proofreadingAPI } from '../utils/apiClient';
 
 // 创建文件处理上下文
 const FileProcessingContext = createContext(null);
@@ -12,7 +12,7 @@ const FileProcessingContext = createContext(null);
  */
 export const FileProcessingProvider = ({ children }) => {
   const { user } = useAuth();
-  const { currentProject, tasks, uploadFileToTask, saveProofreadingResult } = useProject();
+  const { currentProject, uploadFileToTask, saveProofreadingResult } = useProject();
   
   // 文件处理状态
   const [processingFiles, setProcessingFiles] = useState([]);
@@ -275,7 +275,7 @@ export const FileProcessingProvider = ({ children }) => {
   /**
    * 保存校对结果到服务器
    */
-  const saveProofreadingToServer = async (fileId, taskId, corrections) => {
+  const saveProofreadingToServer = async (fileId, taskId, corrections, fileName = 'unknown') => {
     try {
       if (!user || !currentProject) {
         throw new Error('用户未登录或未选择项目');
@@ -289,7 +289,7 @@ export const FileProcessingProvider = ({ children }) => {
         status: 'completed',
         metadata: {
           timestamp: new Date().toISOString(),
-          file_name: files.find(f => f.id === fileId)?.name || 'unknown'
+          file_name: fileName
         }
       };
       
@@ -341,7 +341,18 @@ export const FileProcessingProvider = ({ children }) => {
    * 获取任务相关文件
    */
   const getTaskFiles = (taskId) => {
-    return files.filter(file => file.task_id === taskId);
+    // 从活跃任务中筛选指定taskId的文件
+    const taskFiles = [];
+    Object.entries(activeTasks).forEach(([fileId, task]) => {
+      if (task.taskId === taskId) {
+        // 找到对应的文件 - 使用文件名匹配
+        const file = processingFiles.find(f => f.name === task.file.name && f.size === task.file.size);
+        if (file) {
+          taskFiles.push(file);
+        }
+      }
+    });
+    return taskFiles;
   };
 
   /**

@@ -1,83 +1,71 @@
 /**
  * AI校对服务
  * 集成OpenAI API进行文本纠错、合规性检查等功能
+ * 
+ * 安全说明：所有API调用通过服务端代理进行，前端不直接处理API密钥
  */
 
 import { requestWithRetry } from './apiClient';
 
 /**
- * 配置OpenAI API密钥
- * 注意：在实际生产环境中，请确保API密钥的安全存储
- */
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY || 'your-api-key'; // 从环境变量获取API密钥
-
-/**
- * 调用OpenAI API进行文本校对
+ * 通过服务端代理调用AI校对API
  * @param {string} text - 要校对的文本
  * @param {string} projectName - 项目名称（用于上下文）
  * @returns {Promise<object>} - 校对结果
  */
 export const proofreadTextWithOpenAI = async (text, projectName = '') => {
   try {
-    // 构建提示词，包含项目上下文和校对要求
-    const prompt = `
-    你是一名专业的广告文案校对专家。请仔细检查以下广告文案，从以下几个方面进行校对：
-    1. 错别字检查
-    2. 语法错误检查
-    3. 标点符号使用规范
-    4. 广告合规性（如是否存在误导性表述）
-    5. 品牌名称、产品名称的正确性
-    
-    项目名称：${projectName || '通用项目'}
-    
-    请以JSON格式返回校对结果，包含：
-    - errors: 错误列表，每项包含type(类型)、original(原文)、corrected(修正)、position(位置)、context(上下文)、suggestion(建议)
-    - statistics: 统计信息，包含总错误数、各类错误数量、准确率
-    - summary: 校对总结
-    
-    文本内容：
-    ${text}
-    `;
+    // 构建请求数据
+    const requestData = {
+      text,
+      projectName: projectName || '通用项目',
+      timestamp: Date.now()
+    };
 
-    // 调用OpenAI API，使用requestWithRetry实现错误重试机制
-    const data = await requestWithRetry({
-      url: 'https://api.openai.com/v1/chat/completions',
+    // 通过服务端代理调用AI校对API
+    const response = await requestWithRetry({
+      url: '/api/proofread', // 服务端代理API端点
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        'Content-Type': 'application/json'
       },
-      data: {
-        model: 'gpt-3.5-turbo', // 使用适合的模型
-        messages: [
-          { role: 'system', content: '你是一名专业的广告文案校对专家。' },
-          { role: 'user', content: prompt }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3 // 较低的温度值确保结果更准确
-      }
+      data: requestData
     }, {
       maxCount: 3, // 最多重试3次
       delay: 2000 // 每次重试间隔2秒
     });
     
-    // 解析AI返回的JSON结果
-    try {
-      // 假设AI返回的内容是纯JSON字符串
-      const result = JSON.parse(data.choices[0].message.content);
-      return result;
-    } catch (jsonError) {
-      console.warn('无法解析AI返回的JSON格式，尝试使用默认结果格式');
-      // 如果AI返回的不是纯JSON，使用模拟结果
+    // 解析服务端返回的校对结果
+    if (response && response.success) {
+      return response.data;
+    } else {
+      console.warn('服务端API返回格式异常，使用模拟结果');
       return generateMockProofreadingResult(text);
     }
+    
   } catch (error) {
-    console.error('调用OpenAI API时出错:', error);
+    console.error('调用AI校对API时出错:', error);
     
     // API调用失败时，返回模拟结果
     console.log('使用模拟校对结果');
     return generateMockProofreadingResult(text);
   }
+};
+
+/**
+ * 直接调用OpenAI API（仅用于服务端，前端代码中已移除）
+ * @deprecated 已废弃，仅保留供服务端参考
+ * @param {string} text - 要校对的文本
+ * @param {string} projectName - 项目名称
+ * @returns {Promise<object>} - 校对结果
+ */
+// eslint-disable-next-line
+const proofreadTextDirectAPI = async (text, projectName = '') => {
+  // ⚠️ 警告：此函数仅用于服务端参考实现，不应在前端直接调用
+  console.warn('proofreadTextDirectAPI: 此函数不应在前端直接调用，请使用服务端代理');
+  
+  // 返回模拟结果，避免在前端暴露API密钥
+  return generateMockProofreadingResult(text);
 };
 
 /**

@@ -253,7 +253,7 @@ export const checkDocumentPermission = async (userId, documentId, requiredPermis
 
     // 检查用户是否为文档所有者
     const { data: documentData, error: documentError } = await supabase
-      .from('proofreading_tasks')
+      .from('documents')
       .select('user_id')
       .eq('id', documentId)
       .single();
