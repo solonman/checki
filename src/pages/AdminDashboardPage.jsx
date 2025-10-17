@@ -65,8 +65,12 @@ const AdminDashboardPage = () => {
   // 处理注销
   const handleLogout = async () => {
     try {
-      await logout();
-      navigate('/login');
+      const result = await logout();
+      if (result.success) {
+        navigate('/login');
+      } else {
+        message.error(result.error || '注销失败，请重试');
+      }
     } catch (error) {
       message.error('注销失败，请重试');
     }

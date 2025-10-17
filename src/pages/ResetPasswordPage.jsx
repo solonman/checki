@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { LockOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, message } from 'antd';
-import { useAuth } from '../contexts/AuthContext';
 import supabase from '../utils/supabaseClient';
 import '../styles/auth.css';
 
 const ResetPasswordPage = () => {
   const [loading, setLoading] = useState(false);
-  const { confirmResetPassword } = useAuth();
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [hasError, setHasError] = useState(false);
@@ -17,78 +15,137 @@ const ResetPasswordPage = () => {
   const [passwordRecoveryEvent, setPasswordRecoveryEvent] = useState(false);
 
   useEffect(() => {
-    // 检查URL中的错误信息
-    const checkUrlForErrors = () => {
-      const hash = window.location.hash.substring(1);
-      const searchParams = new URLSearchParams(hash);
+    let timeoutId = null;
+    
+    // 改进的URL解析函数
+    const parseResetLink = () => {
+      const url = new URL(window.location.href);
+      const hashParams = new URLSearchParams(url.hash.substring(1));
+      const searchParams = url.searchParams;
       
-      const error = searchParams.get('error');
-      const errorDesc = searchParams.get('error_description');
+      // 从hash和search中获取参数
+      const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token');
+      const type = hashParams.get('type') || searchParams.get('type');
       
-      if (error) {
-        setHasError(true);
-        setErrorDescription(errorDesc || '');
-        setIsValidLink(false);
-        console.error('密码重置链接错误:', { error, description: errorDesc });
-        return;
-      }
+      console.log('URL解析结果:', {
+        href: url.href,
+        hash: url.hash,
+        search: url.search,
+        accessToken: accessToken ? '存在' : '不存在',
+        refreshToken: refreshToken ? '存在' : '不存在',
+        type: type || '未指定'
+      });
       
-      // 检查是否是有效的重置链接重定向
-      const isRecoveryRedirect = window.location.href.includes('type=recovery') || 
-                                hash.includes('type=recovery');
-      
-      if (isRecoveryRedirect) {
-        console.log('检测到密码重置重定向参数');
-        // 设置标记，等待PASSWORD_RECOVERY事件
-        setIsValidLink(true);
-        setHasError(false);
-      } else {
-        // 检查是否直接访问页面（没有重定向参数）
-        const hasNoParams = !hash && window.location.search === '';
-        if (hasNoParams) {
-          setHasError(true);
-          setErrorDescription('请使用邮件中的完整链接访问此页面');
-          setIsValidLink(false);
-        } else {
-          setIsValidLink(true);
-        }
-      }
+      return { accessToken, refreshToken, type };
     };
 
-    checkUrlForErrors();
+    // 订阅 auth 事件
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Supabase认证事件:', event, session);
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('检测到PASSWORD_RECOVERY事件');
+        setPasswordRecoveryEvent(true);
+        setIsValidLink(true);
+        setHasError(false);
+      }
+      
+      if (event === 'SIGNED_IN' && session) {
+        console.log('检测到SIGNED_IN事件，会话有效');
+        setPasswordRecoveryEvent(true);
+        setIsValidLink(true);
+        setHasError(false);
+      }
+      
+      if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('检测到TOKEN_REFRESHED事件，会话有效');
+        setPasswordRecoveryEvent(true);
+        setIsValidLink(true);
+        setHasError(false);
+      }
+    });
 
-    // 监听Supabase的PASSWORD_RECOVERY事件
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Supabase认证状态变化:', event, session);
+    const checkAndProcessResetLink = async () => {
+      try {
+        console.log('开始检查密码重置链接...');
         
-        if (event === 'PASSWORD_RECOVERY') {
-          console.log('检测到密码重置事件，链接有效');
+        // 解析URL参数
+        const { accessToken, refreshToken, type } = parseResetLink();
+        
+        // 检查是否是有效的重置链接
+        if (!accessToken) {
+          console.log('未找到access_token参数');
+          setHasError('invalid_access');
+          setErrorDescription('请使用邮件中的完整链接访问此页面');
+          setIsValidLink(false);
+          return;
+        }
+        
+        if (type !== 'recovery') {
+          console.log('链接类型不是recovery:', type);
+          setHasError('invalid_access');
+          setErrorDescription('链接类型无效，请使用密码重置链接');
+          setIsValidLink(false);
+          return;
+        }
+        
+        console.log('检测到有效的重置链接，开始设置会话...');
+        
+        // 尝试设置会话 - 使用Supabase推荐的方法
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || undefined
+        });
+        
+        console.log('setSession结果:', { data, error });
+        
+        if (error) {
+          console.error('设置会话失败:', error);
+          // 检查是否是无效的访问令牌错误
+          if (error.message?.includes('invalid') || error.message?.includes('expired')) {
+            setHasError('invalid_access');
+            setErrorDescription('密码重置链接无效或已过期，请重新请求密码重置');
+          } else {
+            setHasError('session_error');
+            setErrorDescription(`会话设置失败: ${error.message}`);
+          }
+          setIsValidLink(false);
+          return;
+        }
+        
+        // 检查会话是否设置成功
+        const session = data?.session;
+        if (session) {
+          console.log('会话设置成功，用户ID:', session.user?.id);
           setPasswordRecoveryEvent(true);
           setIsValidLink(true);
           setHasError(false);
-          
-          // 自动设置用户为已认证状态，以便后续操作
-          if (session?.user) {
-            console.log('用户已通过密码重置验证');
-          }
+        } else {
+          console.log('会话设置成功但未返回会话，等待认证事件...');
+          // 设置超时，避免无限等待
+          timeoutId = setTimeout(() => {
+            console.log('等待认证事件超时');
+            setHasError('timeout_error');
+            setErrorDescription('链接验证超时，请重新点击邮件中的链接');
+            setIsValidLink(false);
+          }, 3000); // 缩短超时时间
         }
-        
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('用户已登录，密码重置成功');
-          // 密码重置后用户会自动登录，可以在这里处理后续逻辑
-        }
-        
-        if (event === 'USER_UPDATED') {
-          console.log('用户信息已更新，密码重置完成');
-        }
+      } catch (err) {
+        console.error('处理重置链接失败:', err);
+        setHasError('validation_error');
+        setErrorDescription(err?.message || '链接验证失败，请重试');
+        setIsValidLink(false);
       }
-    );
+    };
 
+    checkAndProcessResetLink();
+    
     return () => {
       subscription?.unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
     };
-  }, []);
+  }, []); // 空依赖，仅执行一次
 
   // 调试信息
   useEffect(() => {
@@ -96,10 +153,11 @@ const ResetPasswordPage = () => {
       hasError,
       errorDescription,
       isValidLink,
+      passwordRecoveryEvent,
       currentUrl: window.location.href,
       hash: window.location.hash
     });
-  }, [hasError, errorDescription, isValidLink]);
+  }, [hasError, errorDescription, isValidLink, passwordRecoveryEvent]);
 
   // 自定义密码验证规则
   const validatePassword = (_rule, value) => {
@@ -129,16 +187,53 @@ const ResetPasswordPage = () => {
     console.log('开始密码重置流程');
     
     try {
-      const result = await confirmResetPassword(values.password);
-      console.log('密码重置结果:', result);
+      // 首先检查当前会话状态
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (result.success) {
-        message.success('密码重置成功，请重新登录');
-        navigate('/login');
-      } else {
-        console.error('密码重置失败:', result.error);
-        message.error(result.error || '密码重置失败，请重试');
+      if (sessionError) {
+        console.error('获取会话失败:', sessionError);
+        message.error('会话验证失败，请重新点击重置链接');
+        return;
       }
+      
+      if (!session) {
+        console.error('无有效会话');
+        message.error('重置链接无效或已过期，请重新请求密码重置');
+        return;
+      }
+      
+      console.log('当前会话有效，用户ID:', session.user?.id);
+      
+      // 直接使用Supabase更新密码，而不是通过API客户端
+      console.log('正在更新用户密码...');
+      const { error } = await supabase.auth.updateUser({
+        password: values.password
+      });
+      
+      if (error) {
+        console.error('密码更新失败:', error);
+        
+        // 提供更具体的错误信息
+        let errorMessage = error.message || '密码重置失败，请重试';
+        if (error.message.includes('Password should be at least 6 characters')) {
+          errorMessage = '密码长度至少为6位';
+        } else if (error.message.includes('Invalid authentication') || error.message.includes('JWT')) {
+          errorMessage = '重置链接无效或已过期，请重新请求密码重置';
+        }
+        
+        message.error(errorMessage);
+        return;
+      }
+      
+      console.log('密码更新成功');
+      message.success('密码重置成功！请重新登录');
+      
+      // 登出当前会话，让用户重新登录
+      await supabase.auth.signOut();
+      
+      // 跳转到登录页面
+      navigate('/login');
+      
     } catch (error) {
       console.error('密码重置异常:', error);
       message.error(error.message || '密码重置失败，请重试');

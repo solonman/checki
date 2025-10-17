@@ -29,6 +29,7 @@ const SupabasePasswordResetFlowTest = lazy(() => import('./pages/SupabasePasswor
 const PasswordResetLinkDiagnostics = lazy(() => import('./pages/PasswordResetLinkDiagnostics'));
 const PasswordResetDiagnosticsReport = lazy(() => import('./pages/PasswordResetDiagnosticsReport'));
 const PasswordResetDebugPage = lazy(() => import('./pages/PasswordResetDebugPage'));
+const DebugResetLink = lazy(() => import('./pages/DebugResetLink'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const DocxTest = lazy(() => import('./components/DocxTest'));
@@ -83,6 +84,7 @@ function App() {
               <Route path="/password-reset-diagnostics" element={<PasswordResetLinkDiagnostics />} />
               <Route path="/password-reset-report" element={<PasswordResetDiagnosticsReport />} />
               <Route path="/password-reset-debug" element={<PasswordResetDebugPage />} />
+              <Route path="/debug-reset-link" element={<DebugResetLink />} />
               <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>} />
               <Route path="/profile" element={<PrivateRoute><UserProfilePage /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
@@ -699,9 +701,10 @@ function MainLayout() {
   };
 
   // 退出登录处理
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm('确定要退出登录吗？')) {
-      logout();
+      await logout();
+      // 不立即导航，让 Supabase 请求完成
     }
   };
 

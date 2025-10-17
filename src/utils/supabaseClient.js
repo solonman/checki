@@ -28,7 +28,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce' // 使用PKCE流程，更安全
   },
   global: {
     headers: {

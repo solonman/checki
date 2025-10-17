@@ -1,6 +1,5 @@
 // API客户端配置
 import supabase from './supabaseClient';
-import { initializeDatabase } from './databaseSchema';
 import { quickHealthCheck } from './databaseHealth';
 
 /**
@@ -23,31 +22,66 @@ export const authAPI = {
   // 用户注册
   register: async (email, password, metadata = {}) => {
     try {
+      console.log('开始注册用户:', email);
+      
+      // 使用 signUp 方法注册用户
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: metadata,
+          emailRedirectTo: `${window.location.origin}/login`,
         },
       });
       
-      if (error) throw error;
-      return { success: true, data };
+      if (error) {
+        console.error('注册失败:', error);
+        throw error;
+      }
+      
+      console.log('注册成功:', data);
+      
+      // 手动创建用户记录，避免依赖触发器
+      try {
+        // 只有当注册成功且有用户ID时才创建记录
+        if (data?.user?.id) {
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: data.user.id,
+              email: email,
+              full_name: metadata.name || email.split('@')[0],
+              username: metadata.username || email.split('@')[0],
+              role: 'user',
+              created_at: new Date(),
+              updated_at: new Date()
+            });
+            
+          if (insertError) {
+            console.warn('创建用户记录失败，但注册成功:', insertError);
+          }
+        }
+      } catch (insertErr) {
+        console.warn('创建用户记录时出错，但注册成功:', insertErr);
+      }
+      
+      return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      console.error('注册过程中出错:', error);
+      return { success: false, error: error.message || '注册失败，请稍后重试' };
     }
   },
   
   // 用户登录
   login: async (email, password) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       
       if (error) throw error;
-      return { success: true, data };
+      return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -77,9 +111,9 @@ export const authAPI = {
   // 更新用户信息
   updateUser: async (updates) => {
     try {
-      const { data, error } = await supabase.auth.updateUser(updates);
+      const { error } = await supabase.auth.updateUser(updates);
       if (error) throw error;
-      return { success: true, data };
+      return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -96,8 +130,12 @@ export const authAPI = {
       });
       
       // 创建API请求Promise - 使用正确的重定向URL
+      // 确保重定向URL包含完整的协议和域名
+      const redirectUrl = `${window.location.origin}/reset-password`;
+      console.log('API: 重定向URL:', redirectUrl);
+      
       const apiPromise = supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: redirectUrl,
       });
       
       // 使用Promise.race实现超时控制
@@ -112,39 +150,51 @@ export const authAPI = {
     }
   },
 
-  // 确认密码重置（正确的Supabase流程）
+  // 确认密码重置（修复超时问题）
   confirmResetPassword: async (newPassword) => {
+    console.log('API: 开始确认密码重置');
+    
     try {
-      console.log('API: 开始确认密码重置');
+      // 首先检查是否有有效的会话
+      console.log('API: 检查当前会话...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      // 添加超时保护，避免请求卡住
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('密码重置请求超时，请重试')), 30000)
-      );
+      if (sessionError) {
+        console.error('API: 获取会话失败:', sessionError);
+        throw new Error('会话验证失败，请重新点击重置链接');
+      }
       
-      // 正确的密码重置流程：直接更新用户密码
-      // Supabase会在PASSWORD_RECOVERY事件中自动处理令牌验证
-      const updatePromise = (async () => {
-        console.log('API: 正在更新用户密码...');
+      if (!session) {
+        console.error('API: 无有效会话');
+        throw new Error('重置链接无效或已过期，请重新请求密码重置');
+      }
+      
+      console.log('API: 会话验证成功，用户ID:', session.user?.id);
+      console.log('API: 正在更新用户密码...');
+      
+      // 直接调用updateUser，让Supabase SDK处理网络超时
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      
+      if (error) {
+        console.error('API: 密码更新失败:', error);
         
-        const { data, error } = await supabase.auth.updateUser({
-          password: newPassword
-        });
-        
-        if (error) {
-          console.error('API: 密码更新失败:', error);
+        // 提供更具体的错误信息
+        if (error.message.includes('Password should be at least 6 characters')) {
+          throw new Error('密码长度至少为6位');
+        } else if (error.message.includes('Invalid authentication')) {
+          throw new Error('认证信息无效，请重新请求密码重置');
+        } else if (error.message.includes('JWT')) {
+          throw new Error('重置令牌无效或已过期，请重新请求密码重置');
+        } else {
           throw error;
         }
-        
-        console.log('API: 密码更新成功');
-        return data;
-      })();
+      }
       
-      const data = await Promise.race([updatePromise, timeoutPromise]);
-      
-      console.log('API: Supabase响应:', { data });
+      console.log('API: 密码更新成功');
       console.log('API: 密码重置成功');
-      return { success: true, data };
+      return { success: true };
     } catch (error) {
       console.error('API: 密码重置异常:', error);
       
@@ -152,6 +202,10 @@ export const authAPI = {
       let errorMessage = error.message || '密码重置失败，请重试';
       if (error.message.includes('invalid') || error.message.includes('expired')) {
         errorMessage = '重置链接无效或已过期，请重新请求密码重置';
+      } else if (error.message.includes('session') || error.message.includes('会话')) {
+        errorMessage = '重置链接验证失败，请重新点击邮件中的链接';
+      } else if (error.message.includes('JWT') || error.message.includes('token')) {
+        errorMessage = '重置令牌无效，请重新请求密码重置';
       }
       
       return { success: false, error: errorMessage };
@@ -639,7 +693,7 @@ export const teamAPI = {
         .single();
       
       if (error) throw error;
-      return { success: true, data };
+      return { success: true, data: data || {} };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -710,7 +764,7 @@ export const documentAPI = {
         .single();
       
       if (error) throw error;
-      return { success: true, data };
+      return { success: true, data: data || {} };
     } catch (error) {
       return { success: false, error: error.message };
     }

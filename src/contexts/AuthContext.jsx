@@ -247,11 +247,15 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * 用户登出
+   * 添加延迟确保 Supabase 请求完成，避免 net::ERR_ABORTED 错误
    */
   const logout = async () => {
     try {
       setLoading(true);
       const response = await authAPI.logout();
+      
+      // 添加短暂延迟确保 Supabase 请求完成
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       if (response.success) {
         return { success: true, message: '登出成功！' };

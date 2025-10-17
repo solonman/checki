@@ -14,6 +14,7 @@ const DashboardPage = () => {
 
   const handleLogout = async () => {
     await logout();
+    // 登出后不立即导航，让 Supabase 请求完成
   };
 
   const features = [
